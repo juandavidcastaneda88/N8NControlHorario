@@ -1,0 +1,1764 @@
+{
+  "name": "EXAMEN - Control de Horarios Cafetería | ORGANIZADO",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message",
+          "callback_query"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -2200,
+        0
+      ],
+      "id": "8e3a05a5-5039-43b6-8df1-ab2ea82650f8",
+      "name": "Telegram Trigger",
+      "webhookId": "2da37adb-9d27-4ef3-a586-454332d56636"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// CONFIG_GLOBAL — ÚNICO DATO QUE DEBES PEGAR MANUALMENTE:\n// 1) Sube \"Cafeteria_N8N_Google_Sheets.xlsx\" a Google Drive.\n// 2) Ábrelo como Google Sheets.\n// 3) Copia el ID de la URL:\n//    https://docs.google.com/spreadsheets/d/ESTE_ES_EL_ID/edit\n// 4) Reemplaza SOLO el texto PEGA_AQUI_EL_ID_DE_GOOGLE_SHEETS.\n// ============================================================\n\nconst SPREADSHEET_ID = 'PEGA_AQUI_EL_ID_DE_GOOGLE_SHEETS';\n\nconst u = $json;\nconst msg = u.message || u.edited_message || null;\nconst cb = u.callback_query || null;\nconst chat = msg?.chat || cb?.message?.chat || {};\nconst from = msg?.from || cb?.from || {};\nconst rawText = String(msg?.text || '').trim();\nconst callbackData = String(cb?.data || '').trim();\n\nfunction normalizar(s) {\n  return String(s || '')\n    .toLowerCase()\n    .normalize('NFD')\n    .replace(/[\\u0300-\\u036f]/g, '')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\nconst key = normalizar(callbackData || rawText);\nlet action = 'DESCONOCIDO';\nlet pedidoId = '';\nlet detalle = '';\n\nif (['/start', 'start', 'inicio', 'hola', 'buenas', 'menu principal', '🏠 inicio'].includes(key)) {\n  action = 'INICIO';\n} else if (['consultar_menu', 'consultar menu', 'menu', '/menu', '📋 consultar menu'].includes(key)) {\n  action = 'CONSULTAR_MENU';\n} else if (['realizar_pedido', 'realizar pedido', 'pedido', '/pedido', '🛒 realizar pedido'].includes(key)) {\n  action = 'REALIZAR_PEDIDO';\n} else if (key.startsWith('confirm:')) {\n  action = 'CONFIRMAR_PEDIDO';\n  pedidoId = callbackData.split(':').slice(1).join(':').trim();\n} else if (key.startsWith('cancel:')) {\n  action = 'CANCELAR_PEDIDO';\n  pedidoId = callbackData.split(':').slice(1).join(':').trim();\n} else if (/^pedido\\s*:/i.test(rawText)) {\n  action = 'REGISTRAR_PEDIDO';\n  detalle = rawText.replace(/^pedido\\s*:/i, '').trim();\n} else if (['ayuda', '/ayuda', 'help'].includes(key)) {\n  action = 'DESCONOCIDO';\n}\n\nreturn [{\n  json: {\n    spreadsheetId: SPREADSHEET_ID,\n    chatId: chat.id ?? '',\n    telegramUserId: from.id ?? '',\n    username: from.username ?? '',\n    nombre: [from.first_name, from.last_name].filter(Boolean).join(' '),\n    rawText,\n    callbackData,\n    callbackQueryId: cb?.id || '',\n    isCallback: !!cb,\n    action,\n    pedidoId,\n    detalle\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1940,
+        0
+      ],
+      "id": "55d84f36-3ba5-4048-9ef4-a5316561722d",
+      "name": "CONFIG_GLOBAL"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('CONFIG_GLOBAL').item.json.spreadsheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "CONFIG",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -1680,
+        0
+      ],
+      "id": "2ea671b5-330d-4c83-a060-d8d96ff0de8d",
+      "name": "Leer CONFIG",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('CONFIG_GLOBAL').first().json;\nconst cfg = {};\n\nfor (const item of $input.all()) {\n  const k = String(item.json.CLAVE || '').trim();\n  if (!k) continue;\n  cfg[k] = item.json.VALOR;\n}\n\nreturn [{\n  json: {\n    ...base,\n    nombreCafeteria: String(cfg.NOMBRE_CAFETERIA || 'Cafetería Campus'),\n    timezone: String(cfg.TIMEZONE || 'America/Bogota'),\n    diasAtencion: String(cfg.DIAS_ATENCION || '1,2,3,4,5'),\n    horaInicio: String(cfg.HORA_APERTURA || '08:00'),\n    horaFin: String(cfg.HORA_CIERRE || '17:00'),\n    moneda: String(cfg.MONEDA || 'COP'),\n    mensajeCerrado: String(\n      cfg.MENSAJE_CERRADO ||\n      '🌙 Cafetería Cerrada. Nuestro horario es de Lunes a Viernes, 8am a 5pm. ¡Te esperamos mañana!'\n    ),\n    instruccionPedido: String(\n      cfg.INSTRUCCION_PEDIDO ||\n      'Escribe tu pedido así: PEDIDO: 1 Café Americano, 2 Empanadas'\n    )\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1420,
+        0
+      ],
+      "id": "8b36cfaa-bc36-49c2-8d14-ed7d162cb9fe",
+      "name": "Aplicar CONFIG"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "52c15d58-de11-41e6-a393-1af0dc1c60f4",
+              "leftValue": "={{ $json.isCallback }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1160,
+        0
+      ],
+      "id": "141697f7-80f4-4ea8-a214-9df4fb7eefca",
+      "name": "¿Es Callback?"
+    },
+    {
+      "parameters": {
+        "resource": "callback",
+        "operation": "answerQuery",
+        "queryId": "={{ $('Aplicar CONFIG').item.json.callbackQueryId }}",
+        "additionalFields": {
+          "text": "✅ Opción recibida"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -900,
+        -180
+      ],
+      "id": "53bc0856-5a84-4d9e-a42c-3dc542e01de8",
+      "name": "Responder Callback"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: $('Aplicar CONFIG').first().json }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -640,
+        -180
+      ],
+      "id": "9b936ad3-de64-475d-a396-910010f376e4",
+      "name": "Restaurar Contexto"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "850bffdb-dc95-4455-b196-05dd49bcdba5",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "INICIO",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "INICIO"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "922d4416-c78f-47d6-a035-f43429794a6a",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "CONSULTAR_MENU",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "CONSULTAR_MENU"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "f7c8d8c5-5a4f-421b-906a-f5c92361c2ec",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "REALIZAR_PEDIDO",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "REALIZAR_PEDIDO"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "960b40d7-d628-4392-9591-032d50645ce8",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "REGISTRAR_PEDIDO",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "REGISTRAR_PEDIDO"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c0f2fd9f-0b1b-4b81-9a57-0d4865a189c8",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "CONFIRMAR_PEDIDO",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "CONFIRMAR_PEDIDO"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "6910e36c-d96e-4091-90d6-d42ac25eb669",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "CANCELAR_PEDIDO",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "CANCELAR_PEDIDO"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "6c544006-cff9-4196-919a-76815fd6f1d9",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "DESCONOCIDO",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "DESCONOCIDO"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -380,
+        0
+      ],
+      "id": "3ab8823d-d5fa-47bc-a024-1a22ac024649",
+      "name": "Router de Acciones"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ '☕ <b>' + $json.nombreCafeteria + '</b>\\n\\n¡Hola' + ($json.nombre ? ' ' + $json.nombre : '') + '! 👋\\n\\nPuedes consultar el menú en cualquier momento. Los pedidos solo se pueden realizar y confirmar dentro del horario de atención.\\n\\n¿Qué deseas hacer?' }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "📋 Consultar Menú",
+                    "additionalFields": {
+                      "callback_data": "consultar_menu"
+                    }
+                  },
+                  {
+                    "text": "🛒 Realizar Pedido",
+                    "additionalFields": {
+                      "callback_data": "realizar_pedido"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        -760
+      ],
+      "id": "ddc43c9b-ef8b-4886-b1f4-7deee9e62d5b",
+      "name": "Telegram - Inicio"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('CONFIG_GLOBAL').item.json.spreadsheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "MENU",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        0,
+        -540
+      ],
+      "id": "7bdba0ef-c37f-4686-9f1a-83a7f92683df",
+      "name": "Leer MENU"
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('Aplicar CONFIG').first().json;\nconst rows = $input.all()\n  .map(i => i.json)\n  .filter(r => String(r.DISPONIBLE || '').trim().toUpperCase() !== 'NO')\n  .sort((a, b) => Number(a.ORDEN || 999) - Number(b.ORDEN || 999));\n\nconst groups = {};\nfor (const r of rows) {\n  const cat = String(r.CATEGORIA || 'Otros');\n  if (!groups[cat]) groups[cat] = [];\n  groups[cat].push(r);\n}\n\nlet text = `📋 <b>MENÚ — ${base.nombreCafeteria}</b>\\n`;\nfor (const [cat, items] of Object.entries(groups)) {\n  text += `\\n<b>${cat}</b>\\n`;\n  for (const r of items) {\n    const price = Number(r.PRECIO || 0).toLocaleString('es-CO');\n    text += `• <b>${r.PRODUCTO}</b> — $${price} ${base.moneda}\\n`;\n    if (r.DESCRIPCION) text += `  <i>${r.DESCRIPCION}</i>\\n`;\n  }\n}\ntext += `\\n🕒 Horario para pedidos: Lunes a Viernes, ${base.horaInicio}–${base.horaFin}.`;\ntext += `\\n✅ El menú puede consultarse incluso cuando la cafetería está cerrada.`;\n\nreturn [{ json: { ...base, menuTexto: text } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        280,
+        -540
+      ],
+      "id": "d1d44112-3b8c-4f85-b947-a4b5eca3ce2b",
+      "name": "Construir Menú"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.menuTexto }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "🛒 Realizar Pedido",
+                    "additionalFields": {
+                      "callback_data": "realizar_pedido"
+                    }
+                  },
+                  {
+                    "text": "🏠 Inicio",
+                    "additionalFields": {
+                      "callback_data": "start"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        560,
+        -540
+      ],
+      "id": "265a2974-137a-4c23-b4de-4a1f4976b541",
+      "name": "Telegram - Menú"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "7346b516-8959-4785-8036-f64f9c4eac85",
+              "leftValue": "={{ $json.diasAtencion.split(',').map(x => Number(x.trim())).includes($now.setZone($json.timezone).weekday) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "bd150a71-043a-4ff4-973b-0f2a7ee20859",
+              "leftValue": "={{ $now.setZone($json.timezone).hour * 60 + $now.setZone($json.timezone).minute }}",
+              "rightValue": "={{ Number($json.horaInicio.split(':')[0]) * 60 + Number($json.horaInicio.split(':')[1]) }}",
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            },
+            {
+              "id": "18795951-2d44-4c21-a441-928eb1a91b72",
+              "leftValue": "={{ $now.setZone($json.timezone).hour * 60 + $now.setZone($json.timezone).minute }}",
+              "rightValue": "={{ Number($json.horaFin.split(':')[0]) * 60 + Number($json.horaFin.split(':')[1]) }}",
+              "operator": {
+                "type": "number",
+                "operation": "lte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        -260
+      ],
+      "id": "d9bc6cac-d441-4a15-a5e7-9c5dcd3dcc7f",
+      "name": "IF Horario - Realizar Pedido ($now)"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ '✅ <b>Cafetería abierta</b>\\n\\n' + $json.instruccionPedido + '\\n\\nEjemplo:\\n<code>PEDIDO: 1 Café Americano, 2 Empanadas</code>\\n\\nCuando lo envíes, guardaré un borrador en Google Sheets y aparecerán los botones para Confirmar o Cancelar.' }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "📋 Consultar Menú",
+                    "additionalFields": {
+                      "callback_data": "consultar_menu"
+                    }
+                  },
+                  {
+                    "text": "🏠 Inicio",
+                    "additionalFields": {
+                      "callback_data": "start"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        320,
+        -320
+      ],
+      "id": "2eeebcb0-0161-4b76-929f-ada0a2d35416",
+      "name": "Telegram - Instrucciones Pedido"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.mensajeCerrado }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "📋 Consultar Menú",
+                    "additionalFields": {
+                      "callback_data": "consultar_menu"
+                    }
+                  },
+                  {
+                    "text": "🏠 Inicio",
+                    "additionalFields": {
+                      "callback_data": "start"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        320,
+        -180
+      ],
+      "id": "42e13a0c-637c-4a7c-821b-c65f349b03a8",
+      "name": "Telegram - Cerrada | Realizar Pedido"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "17edaa42-4cf6-4922-ac4b-84cdcca1a9ed",
+              "leftValue": "={{ $json.diasAtencion.split(',').map(x => Number(x.trim())).includes($now.setZone($json.timezone).weekday) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "3e9f1f19-af41-4126-9720-92031e1f923a",
+              "leftValue": "={{ $now.setZone($json.timezone).hour * 60 + $now.setZone($json.timezone).minute }}",
+              "rightValue": "={{ Number($json.horaInicio.split(':')[0]) * 60 + Number($json.horaInicio.split(':')[1]) }}",
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            },
+            {
+              "id": "47fac7aa-25d1-4e31-81a5-0fdf932db586",
+              "leftValue": "={{ $now.setZone($json.timezone).hour * 60 + $now.setZone($json.timezone).minute }}",
+              "rightValue": "={{ Number($json.horaFin.split(':')[0]) * 60 + Number($json.horaFin.split(':')[1]) }}",
+              "operator": {
+                "type": "number",
+                "operation": "lte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        80
+      ],
+      "id": "5a197305-689a-4c72-a8c4-247eca672121",
+      "name": "IF Horario - Registrar Borrador ($now)"
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $json;\nconst now = new Date();\nconst local = new Intl.DateTimeFormat('sv-SE', {\n  timeZone: j.timezone,\n  year: 'numeric', month: '2-digit', day: '2-digit',\n  hour: '2-digit', minute: '2-digit', second: '2-digit',\n  hour12: false\n}).format(now);\n\nconst pedidoId = `PED-${Date.now()}-${String(j.chatId).slice(-5)}`;\n\nreturn [{\n  json: {\n    ...j,\n    PEDIDO_ID: pedidoId,\n    FECHA_CREACION: now.toISOString(),\n    FECHA_CONFIRMACION: '',\n    CHAT_ID: String(j.chatId),\n    TELEGRAM_USER_ID: String(j.telegramUserId),\n    USERNAME: j.username || '',\n    NOMBRE: j.nombre || '',\n    DETALLE: j.detalle || '',\n    ESTADO: 'PENDIENTE',\n    CANAL: 'Telegram',\n    HORA_LOCAL: local\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        280,
+        80
+      ],
+      "id": "13687119-65f6-4654-9195-7ec2a124308b",
+      "name": "Preparar Pedido"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('CONFIG_GLOBAL').item.json.spreadsheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "PEDIDOS",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "PEDIDO_ID": "={{ $json.PEDIDO_ID }}",
+            "FECHA_CREACION": "={{ $json.FECHA_CREACION }}",
+            "FECHA_CONFIRMACION": "={{ $json.FECHA_CONFIRMACION }}",
+            "CHAT_ID": "={{ $json.CHAT_ID }}",
+            "TELEGRAM_USER_ID": "={{ $json.TELEGRAM_USER_ID }}",
+            "USERNAME": "={{ $json.USERNAME }}",
+            "NOMBRE": "={{ $json.NOMBRE }}",
+            "DETALLE": "={{ $json.DETALLE }}",
+            "ESTADO": "={{ $json.ESTADO }}",
+            "CANAL": "={{ $json.CANAL }}",
+            "HORA_LOCAL": "={{ $json.HORA_LOCAL }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "PEDIDO_ID",
+              "displayName": "PEDIDO_ID",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "FECHA_CREACION",
+              "displayName": "FECHA_CREACION",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "FECHA_CONFIRMACION",
+              "displayName": "FECHA_CONFIRMACION",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "CHAT_ID",
+              "displayName": "CHAT_ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "TELEGRAM_USER_ID",
+              "displayName": "TELEGRAM_USER_ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "USERNAME",
+              "displayName": "USERNAME",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "NOMBRE",
+              "displayName": "NOMBRE",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "DETALLE",
+              "displayName": "DETALLE",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ESTADO",
+              "displayName": "ESTADO",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "CANAL",
+              "displayName": "CANAL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "HORA_LOCAL",
+              "displayName": "HORA_LOCAL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        560,
+        80
+      ],
+      "id": "d038f05c-3e60-4d05-b606-1ea75ecdb5fc",
+      "name": "Google Sheets - Guardar Borrador"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Preparar Pedido').item.json.chatId }}",
+        "text": "={{ '🧾 <b>Pedido guardado como borrador</b>\\n\\nID: <code>' + $('Preparar Pedido').item.json.PEDIDO_ID + '</code>\\nDetalle: ' + $('Preparar Pedido').item.json.DETALLE + '\\n\\nPulsa <b>Confirmar Pedido</b> para enviarlo a cocina.' }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "✅ Confirmar Pedido",
+                    "additionalFields": {
+                      "callback_data": "={{ 'confirm:' + $('Preparar Pedido').item.json.PEDIDO_ID }}"
+                    }
+                  },
+                  {
+                    "text": "❌ Cancelar",
+                    "additionalFields": {
+                      "callback_data": "={{ 'cancel:' + $('Preparar Pedido').item.json.PEDIDO_ID }}"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "📋 Consultar Menú",
+                    "additionalFields": {
+                      "callback_data": "consultar_menu"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        840,
+        80
+      ],
+      "id": "d008004e-dea6-4870-84fc-d6a5b552b672",
+      "name": "Telegram - Borrador Listo"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "f59e1ac0-7aad-4889-9b1f-8864de7b5967",
+              "leftValue": "={{ $json.diasAtencion.split(',').map(x => Number(x.trim())).includes($now.setZone($json.timezone).weekday) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "f059d052-ae0f-4fc6-aecf-070ab0b51c58",
+              "leftValue": "={{ $now.setZone($json.timezone).hour * 60 + $now.setZone($json.timezone).minute }}",
+              "rightValue": "={{ Number($json.horaInicio.split(':')[0]) * 60 + Number($json.horaInicio.split(':')[1]) }}",
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            },
+            {
+              "id": "678ce3de-5565-41f7-b417-acb6a1afcc66",
+              "leftValue": "={{ $now.setZone($json.timezone).hour * 60 + $now.setZone($json.timezone).minute }}",
+              "rightValue": "={{ Number($json.horaFin.split(':')[0]) * 60 + Number($json.horaFin.split(':')[1]) }}",
+              "operator": {
+                "type": "number",
+                "operation": "lte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        420
+      ],
+      "id": "bc3220ac-ed5a-45ee-8e24-2ebfe2c667e6",
+      "name": "IF Horario - Confirmar Pedido ($now)"
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $json;\nconst now = new Date();\nconst local = new Intl.DateTimeFormat('sv-SE', {\n  timeZone: j.timezone,\n  year: 'numeric', month: '2-digit', day: '2-digit',\n  hour: '2-digit', minute: '2-digit', second: '2-digit',\n  hour12: false\n}).format(now);\n\nreturn [{\n  json: {\n    ...j,\n    PEDIDO_ID: j.pedidoId,\n    FECHA_CONFIRMACION: now.toISOString(),\n    ESTADO: 'CONFIRMADO',\n    HORA_LOCAL: local\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        280,
+        420
+      ],
+      "id": "99408acd-dcd2-4348-9315-6a48d7921cbe",
+      "name": "Preparar Confirmación"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('CONFIG_GLOBAL').item.json.spreadsheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "PEDIDOS",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "PEDIDO_ID": "={{ $json.PEDIDO_ID }}",
+            "FECHA_CONFIRMACION": "={{ $json.FECHA_CONFIRMACION }}",
+            "ESTADO": "={{ $json.ESTADO }}",
+            "HORA_LOCAL": "={{ $json.HORA_LOCAL }}"
+          },
+          "matchingColumns": [
+            "PEDIDO_ID"
+          ],
+          "schema": [
+            {
+              "id": "PEDIDO_ID",
+              "displayName": "PEDIDO_ID",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "FECHA_CREACION",
+              "displayName": "FECHA_CREACION",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "FECHA_CONFIRMACION",
+              "displayName": "FECHA_CONFIRMACION",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "CHAT_ID",
+              "displayName": "CHAT_ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "TELEGRAM_USER_ID",
+              "displayName": "TELEGRAM_USER_ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "USERNAME",
+              "displayName": "USERNAME",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "NOMBRE",
+              "displayName": "NOMBRE",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "DETALLE",
+              "displayName": "DETALLE",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ESTADO",
+              "displayName": "ESTADO",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "CANAL",
+              "displayName": "CANAL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "HORA_LOCAL",
+              "displayName": "HORA_LOCAL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        560,
+        420
+      ],
+      "id": "caf53bb3-b456-4c26-b3c7-04bc158a3076",
+      "name": "Google Sheets - Confirmar Pedido"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Aplicar CONFIG').item.json.chatId }}",
+        "text": "={{ '✅ <b>Pedido confirmado</b>\\n\\nID: <code>' + $('Preparar Confirmación').item.json.PEDIDO_ID + '</code>\\nTu pedido fue marcado como CONFIRMADO en Google Sheets.' }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "📋 Consultar Menú",
+                    "additionalFields": {
+                      "callback_data": "consultar_menu"
+                    }
+                  },
+                  {
+                    "text": "🏠 Inicio",
+                    "additionalFields": {
+                      "callback_data": "start"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        840,
+        420
+      ],
+      "id": "ba97be1f-f7e1-4333-9884-b0ca6805f227",
+      "name": "Telegram - Pedido Confirmado"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { ...$json, PEDIDO_ID: $json.pedidoId, ESTADO: 'CANCELADO' } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        720
+      ],
+      "id": "0e301c4c-4756-4308-ba30-d3b580aac42c",
+      "name": "Preparar Cancelación"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('CONFIG_GLOBAL').item.json.spreadsheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "PEDIDOS",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "PEDIDO_ID": "={{ $json.PEDIDO_ID }}",
+            "ESTADO": "={{ $json.ESTADO }}"
+          },
+          "matchingColumns": [
+            "PEDIDO_ID"
+          ],
+          "schema": [
+            {
+              "id": "PEDIDO_ID",
+              "displayName": "PEDIDO_ID",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "FECHA_CREACION",
+              "displayName": "FECHA_CREACION",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "FECHA_CONFIRMACION",
+              "displayName": "FECHA_CONFIRMACION",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "CHAT_ID",
+              "displayName": "CHAT_ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "TELEGRAM_USER_ID",
+              "displayName": "TELEGRAM_USER_ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "USERNAME",
+              "displayName": "USERNAME",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "NOMBRE",
+              "displayName": "NOMBRE",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "DETALLE",
+              "displayName": "DETALLE",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ESTADO",
+              "displayName": "ESTADO",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "CANAL",
+              "displayName": "CANAL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "HORA_LOCAL",
+              "displayName": "HORA_LOCAL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        280,
+        720
+      ],
+      "id": "9cfdf18e-b2b2-4ed8-9828-bef03d1b9909",
+      "name": "Google Sheets - Cancelar Pedido"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Aplicar CONFIG').item.json.chatId }}",
+        "text": "={{ '❌ Pedido <b>' + $('Preparar Cancelación').item.json.PEDIDO_ID + '</b> cancelado correctamente.' }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "📋 Consultar Menú",
+                    "additionalFields": {
+                      "callback_data": "consultar_menu"
+                    }
+                  },
+                  {
+                    "text": "🏠 Inicio",
+                    "additionalFields": {
+                      "callback_data": "start"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        560,
+        720
+      ],
+      "id": "cfffd768-f8f7-42ed-b8e6-95f0c900b6e3",
+      "name": "Telegram - Pedido Cancelado"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "No entendí ese mensaje. Puedes usar los botones o escribir:\\n\\n• MENU\\n• REALIZAR PEDIDO\\n• PEDIDO: 1 Café Americano, 2 Empanadas\\n• INICIO",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "📋 Consultar Menú",
+                    "additionalFields": {
+                      "callback_data": "consultar_menu"
+                    }
+                  },
+                  {
+                    "text": "🛒 Realizar Pedido",
+                    "additionalFields": {
+                      "callback_data": "realizar_pedido"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        980
+      ],
+      "id": "847b62c6-6e07-420d-844a-fb7c2b816016",
+      "name": "Telegram - Ayuda"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.mensajeCerrado }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "📋 Consultar Menú",
+                    "additionalFields": {
+                      "callback_data": "consultar_menu"
+                    }
+                  },
+                  {
+                    "text": "🏠 Inicio",
+                    "additionalFields": {
+                      "callback_data": "start"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        280,
+        180
+      ],
+      "id": "3b7e8d4b-2dde-4c08-93fc-f6b49b74423d",
+      "name": "Telegram - Cerrada | Registrar Pedido"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.mensajeCerrado }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "📋 Consultar Menú",
+                    "additionalFields": {
+                      "callback_data": "consultar_menu"
+                    }
+                  },
+                  {
+                    "text": "🏠 Inicio",
+                    "additionalFields": {
+                      "callback_data": "start"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        280,
+        520
+      ],
+      "id": "64ea4f5f-7105-4a8e-b74c-ef836ed70897",
+      "name": "Telegram - Cerrada | Confirmar Pedido"
+    },
+    {
+      "parameters": {
+        "content": "## 1 · Entrada y configuración\nTelegram → CONFIG → detección de botones/mensajes → Router",
+        "height": 140,
+        "width": 1940,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -2240,
+        -300
+      ],
+      "id": "70ec22fc-238d-4591-8f57-f38d06ac900e",
+      "name": "SECCIÓN 1 - ENTRADA"
+    },
+    {
+      "parameters": {
+        "content": "## 2 · Consulta de menú\nDisponible **24/7**. Esta ruta no bloquea por horario.",
+        "height": 105,
+        "width": 930,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -680
+      ],
+      "id": "78966db9-3ac8-4c54-84af-9a1579dbc988",
+      "name": "SECCIÓN 2 - MENÚ"
+    },
+    {
+      "parameters": {
+        "content": "## 3 · Realizar / registrar pedido\nValidación con `$now` antes de continuar.",
+        "height": 105,
+        "width": 1160,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -390
+      ],
+      "id": "37655225-bc74-4147-906f-d79b5a22c1af",
+      "name": "SECCIÓN 3 - PEDIDO"
+    },
+    {
+      "parameters": {
+        "content": "## 4 · Confirmación\nSe vuelve a validar el horario antes de confirmar.",
+        "height": 105,
+        "width": 1160,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        300
+      ],
+      "id": "0aa1f4c9-ed5c-4ca6-ad7a-222b2f66b133",
+      "name": "SECCIÓN 4 - CONFIRMAR"
+    },
+    {
+      "parameters": {
+        "content": "## 5 · Cancelación\nActualiza el pedido existente a `CANCELADO`.",
+        "height": 105,
+        "width": 900,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        610
+      ],
+      "id": "8470507e-6377-47b3-9654-3b872904d5f3",
+      "name": "SECCIÓN 5 - CANCELAR"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "CONFIG_GLOBAL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CONFIG_GLOBAL": {
+      "main": [
+        [
+          {
+            "node": "Leer CONFIG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer CONFIG": {
+      "main": [
+        [
+          {
+            "node": "Aplicar CONFIG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aplicar CONFIG": {
+      "main": [
+        [
+          {
+            "node": "¿Es Callback?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Es Callback?": {
+      "main": [
+        [
+          {
+            "node": "Responder Callback",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Router de Acciones",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Responder Callback": {
+      "main": [
+        [
+          {
+            "node": "Restaurar Contexto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restaurar Contexto": {
+      "main": [
+        [
+          {
+            "node": "Router de Acciones",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Router de Acciones": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Inicio",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Leer MENU",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IF Horario - Realizar Pedido ($now)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IF Horario - Registrar Borrador ($now)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IF Horario - Confirmar Pedido ($now)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preparar Cancelación",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram - Ayuda",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer MENU": {
+      "main": [
+        [
+          {
+            "node": "Construir Menú",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Construir Menú": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Menú",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Horario - Realizar Pedido ($now)": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Instrucciones Pedido",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram - Cerrada | Realizar Pedido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Horario - Registrar Borrador ($now)": {
+      "main": [
+        [
+          {
+            "node": "Preparar Pedido",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram - Cerrada | Registrar Pedido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Pedido": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Guardar Borrador",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets - Guardar Borrador": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Borrador Listo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Horario - Confirmar Pedido ($now)": {
+      "main": [
+        [
+          {
+            "node": "Preparar Confirmación",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram - Cerrada | Confirmar Pedido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Confirmación": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Confirmar Pedido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets - Confirmar Pedido": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Pedido Confirmado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Cancelación": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Cancelar Pedido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets - Cancelar Pedido": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Pedido Cancelado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Bogota"
+  },
+  "versionId": "51feb000-de31-45b2-836f-f09500edb1ec",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
