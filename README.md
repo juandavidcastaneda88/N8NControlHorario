@@ -8,6 +8,13 @@ Proyecto construido para **n8n + Telegram + Google Sheets**.
 - `Cafeteria_N8N_Google_Sheets.xlsx`: base de datos lista para subir y abrir como Google Sheets.
 - `README.md`: instalación, configuración, lógica y pruebas.
 
+- ## FOTOS PRUEBAS DEL Chatbot Cafetería — Control de Horarios de Atención
+- <img width="832" height="790" alt="Captura de pantalla 2026-08-18 204521" src="https://github.com/user-attachments/assets/75cedd00-d22b-462c-84ea-bd6f0dcc58b3" />
+
+<img width="860" height="856" alt="Captura de pantalla 2026-08-18 204531" src="https://github.com/user-attachments/assets/4454d426-17f1-4763-96f4-a3567a305d23" />
+
+
+
 ## Arquitectura
 
 **Telegram → n8n → Google Sheets**
